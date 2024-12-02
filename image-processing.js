@@ -284,6 +284,11 @@ class TextureProcessor {
                     for (let sx = 0; sx < stitchSize && x + sx < width; sx++) {
                         const offset = ((y + sy) * width + (x + sx)) * 4;
 
+                        // 使用原始像素的颜色
+                        const pixelR = tempData[offset];
+                        const pixelG = tempData[offset + 1];
+                        const pixelB = tempData[offset + 2];
+
                         // 创建针脚纹理
                         const distanceToCenter = Math.sqrt(
                             Math.pow(sx - stitchSize/2, 2) +
@@ -293,12 +298,12 @@ class TextureProcessor {
                         // 模拟线条效果
                         const threadEffect = Math.sin(distanceToCenter * Math.PI / 2) * 0.3;
 
-                        // 应用颜色和纹理
-                        data[offset] = Math.min(255, r * (1 + threadEffect));
-                        data[offset + 1] = Math.min(255, g * (1 + threadEffect));
-                        data[offset + 2] = Math.min(255, b * (1 + threadEffect));
+                        // 应用颜色和纹理，使用原始像素的颜色
+                        data[offset] = Math.min(255, pixelR * (1 + threadEffect));
+                        data[offset + 1] = Math.min(255, pixelG * (1 + threadEffect));
+                        data[offset + 2] = Math.min(255, pixelB * (1 + threadEffect));
 
-                        // 在针脚边缘添加阴影效���
+                        // 在针脚边缘添加阴影效果
                         if (distanceToCenter > stitchSize/2 - stitchGap) {
                             data[offset] = Math.max(0, data[offset] - 30);
                             data[offset + 1] = Math.max(0, data[offset + 1] - 30);
