@@ -145,6 +145,12 @@ class TextureProcessor {
             case 'crossStitch2':
                 this.applyCrossStitch2Effect(imageData);
                 break;
+            case 'whiteInk':
+                this.applyWhiteInkEffect(imageData);
+                break;
+            case 'directInk':
+                this.applyDirectInkEffect(imageData);
+                break;
         }
 
         if (effectType !== 'normal') {
@@ -453,13 +459,13 @@ class TextureProcessor {
         const width = imageData.width;
         const height = imageData.height;
 
-        // 创建临时画布来构建最终图���
+        // 创建临时画布来构建最终图
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = width;
         tempCanvas.height = height;
         const tempCtx = tempCanvas.getContext('2d');
 
-        // 十字绣参数
+        // ���字绣参数
         const stitchSize = 8;  // 每个十字绣的大小
 
         // 遍历原图的每个网格
@@ -543,12 +549,201 @@ class TextureProcessor {
         // 在绘制之前，清除目标区域为透明
         ctx.clearRect(x, y, size, size);
 
-        // 将着色后的图案绘制到目标位置
+        // 将着色后的图绘制到目标置
         ctx.drawImage(
             patternCanvas,
             0, 0, patternCanvas.width, patternCanvas.height,
             x, y, size, size
         );
+    }
+
+    // 添加白墨烫画效果方法
+    applyWhiteInkEffect(imageData) {
+        const data = imageData.data;
+        const width = imageData.width;
+        const height = imageData.height;
+
+        // 创建临时数组存储原始数据
+        const tempData = new Uint8ClampedArray(data);
+
+        // 首先创建白色背景
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = 255;     // R
+            data[i + 1] = 255; // G
+            data[i + 2] = 255; // B
+            data[i + 3] = 255; // A
+        }
+
+        // DTF 效果参数
+        const dotSize = 2;        // 墨点大小
+        const dotSpacing = 2;     // 点间距
+        const whiteThreshold = 200; // 白色阈值
+
+        // 处理每个点
+        for (let y = 0; y < height; y += dotSpacing) {
+            for (let x = 0; x < width; x += dotSpacing) {
+                const idx = (y * width + x) * 4;
+
+                // 获取原始颜色
+                const r = tempData[idx];
+                const g = tempData[idx + 1];
+                const b = tempData[idx + 2];
+
+                // 计算亮度
+                const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
+
+                // 如果亮度高于阈值，使用白色；否则使用原始颜色
+                const useWhite = brightness > whiteThreshold;
+
+                // 绘制点
+                for (let dy = -dotSize; dy <= dotSize; dy++) {
+                    for (let dx = -dotSize; dx <= dotSize; dx++) {
+                        const targetX = x + dx;
+                        const targetY = y + dy;
+
+                        if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+
+                            if (distance <= dotSize) {
+                                const targetIdx = (targetY * width + targetX) * 4;
+                                const intensity = 1 - (distance / dotSize);
+
+                                if (useWhite) {
+                                    // 白色部分添加微弱的纹理
+                                    const whiteNoise = Math.random() * 10;
+                                    data[targetIdx] = Math.min(255, 255 - whiteNoise);
+                                    data[targetIdx + 1] = Math.min(255, 255 - whiteNoise);
+                                    data[targetIdx + 2] = Math.min(255, 255 - whiteNoise);
+                                    data[targetIdx + 3] = Math.min(255, 255 * intensity);
+                                } else {
+                                    // 彩色部分
+                                    data[targetIdx] = Math.min(255, r * intensity);
+                                    data[targetIdx + 1] = Math.min(255, g * intensity);
+                                    data[targetIdx + 2] = Math.min(255, b * intensity);
+                                    data[targetIdx + 3] = 255;
+
+                                    // 添加细微纹理
+                                    const noise = (Math.random() - 0.5) * 15;
+                                    data[targetIdx] = Math.max(0, Math.min(255, data[targetIdx] + noise));
+                                    data[targetIdx + 1] = Math.max(0, Math.min(255, data[targetIdx + 1] + noise));
+                                    data[targetIdx + 2] = Math.max(0, Math.min(255, data[targetIdx + 2] + noise));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 添加整体的薄膜质感
+        for (let i = 0; i < data.length; i += 4) {
+            // 添加轻微的光泽
+            const gloss = Math.random() * 10;
+            data[i] = Math.min(255, data[i] + gloss);
+            data[i + 1] = Math.min(255, data[i + 1] + gloss);
+            data[i + 2] = Math.min(255, data[i + 2] + gloss);
+        }
+    }
+
+    // 添加直喷效果方法
+    applyDirectInkEffect(imageData) {
+        const data = imageData.data;
+        const width = imageData.width;
+        const height = imageData.height;
+
+        // 创建临时数组存储原始数据
+        const tempData = new Uint8ClampedArray(data);
+
+        // DTG 参数
+        const dotSize = 3;         // 墨点大小
+        const dotSpacing = 2;      // 墨点间距
+        const fabricTexture = 0.15; // 布料纹理强度
+        const inkSpread = 0.8;     // 墨水扩散程度
+
+        // 创建布料纹理背景
+        for (let i = 0; i < data.length; i += 4) {
+            // 添加布料纹理
+            const textureNoise = ((Math.random() - 0.5) * 20) * fabricTexture;
+            const baseColor = 250; // 接近白色的底色
+            data[i] = baseColor + textureNoise;     // R
+            data[i + 1] = baseColor + textureNoise; // G
+            data[i + 2] = baseColor + textureNoise; // B
+            data[i + 3] = 255;                      // A
+        }
+
+        // 处理每个墨点
+        for (let y = 0; y < height; y += dotSpacing) {
+            for (let x = 0; x < width; x += dotSpacing) {
+                const idx = (y * width + x) * 4;
+
+                // 获取原始颜色
+                const r = tempData[idx];
+                const g = tempData[idx + 1];
+                const b = tempData[idx + 2];
+
+                // 计算颜色亮度
+                const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
+
+                // 绘制主要墨点
+                for (let dy = -dotSize; dy <= dotSize; dy++) {
+                    for (let dx = -dotSize; dx <= dotSize; dx++) {
+                        const targetX = x + dx;
+                        const targetY = y + dy;
+
+                        if (targetX >= 0 && targetX < width && targetY >= 0 && targetY < height) {
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+
+                            if (distance <= dotSize) {
+                                const targetIdx = (targetY * width + targetX) * 4;
+
+                                // 模拟墨水在布料上的扩散
+                                const spread = Math.pow(1 - distance / dotSize, inkSpread);
+                                const intensity = spread * (1 - brightness / 510); // 亮度越高，墨水越少
+
+                                // 模拟墨水渗透
+                                const inkBlend = (color, base) => {
+                                    const penetration = Math.random() * 0.2 + 0.8; // 墨水渗透程度
+                                    return Math.floor(color * intensity * penetration +
+                                                   base * (1 - intensity * penetration));
+                                };
+
+                                // 应用颜色并模拟墨水渗透
+                                data[targetIdx] = inkBlend(r, data[targetIdx]);
+                                data[targetIdx + 1] = inkBlend(g, data[targetIdx + 1]);
+                                data[targetIdx + 2] = inkBlend(b, data[targetIdx + 2]);
+
+                                // 添加纤维纹理
+                                if (Math.random() < 0.3) {
+                                    const fiberNoise = (Math.random() - 0.5) * 15;
+                                    data[targetIdx] = Math.max(0, Math.min(255, data[targetIdx] + fiberNoise));
+                                    data[targetIdx + 1] = Math.max(0, Math.min(255, data[targetIdx + 1] + fiberNoise));
+                                    data[targetIdx + 2] = Math.max(0, Math.min(255, data[targetIdx + 2] + fiberNoise));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 添加墨水微小扩散效果
+                if (Math.random() < 0.2 && brightness < 200) {
+                    const spreadRadius = Math.floor(dotSize * 1.5);
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = Math.random() * spreadRadius;
+
+                    const spreadX = x + Math.cos(angle) * distance;
+                    const spreadY = y + Math.sin(angle) * distance;
+
+                    if (spreadX >= 0 && spreadX < width && spreadY >= 0 && spreadY < height) {
+                        const spreadIdx = (Math.floor(spreadY) * width + Math.floor(spreadX)) * 4;
+                        const spreadIntensity = 0.3 * (1 - distance / spreadRadius);
+
+                        data[spreadIdx] = Math.floor(r * spreadIntensity + data[spreadIdx] * (1 - spreadIntensity));
+                        data[spreadIdx + 1] = Math.floor(g * spreadIntensity + data[spreadIdx + 1] * (1 - spreadIntensity));
+                        data[spreadIdx + 2] = Math.floor(b * spreadIntensity + data[spreadIdx + 2] * (1 - spreadIntensity));
+                    }
+                }
+            }
+        }
     }
 }
 
