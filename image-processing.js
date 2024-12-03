@@ -259,74 +259,111 @@ class TextureProcessor {
         // 创建临时数组存储原始数据
         const tempData = new Uint8ClampedArray(data);
 
-        // 刺绣效果参数
-        const stitchSize = 4;  // 针脚大小
-        const stitchGap = 2;   // 针脚间隔
+        // 刺绣参数
+        const stitchSize = 4;         // 针脚大小
+        const stitchGap = 2;          // 针脚间隔
+        const heightFactor = 0.5;      // 立体高度系数
+        const shadowIntensity = 0.7;   // 阴影强度
+        const highlightIntensity = 1.4; // 高光强度
+        const stackLayers = 3;         // 堆叠层数
 
-        // 创建刺绣效果
+        // 处理每个刺绣区域
         for (let y = 0; y < height; y += stitchSize) {
             for (let x = 0; x < width; x += stitchSize) {
-                // 计算当前区块的平均颜色
+                // 获取区域平均颜色
                 let r = 0, g = 0, b = 0, count = 0;
-
-                // 收集区块内的颜色
                 for (let sy = 0; sy < stitchSize && y + sy < height; sy++) {
                     for (let sx = 0; sx < stitchSize && x + sx < width; sx++) {
-                        const offset = ((y + sy) * width + (x + sx)) * 4;
-                        r += tempData[offset];
-                        g += tempData[offset + 1];
-                        b += tempData[offset + 2];
+                        const idx = ((y + sy) * width + (x + sx)) * 4;
+                        r += tempData[idx];
+                        g += tempData[idx + 1];
+                        b += tempData[idx + 2];
                         count++;
                     }
                 }
-
-                // 计算平均值
                 r = Math.round(r / count);
                 g = Math.round(g / count);
                 b = Math.round(b / count);
 
-                // 应用针脚效果
-                for (let sy = 0; sy < stitchSize && y + sy < height; sy++) {
-                    for (let sx = 0; sx < stitchSize && x + sx < width; sx++) {
-                        const offset = ((y + sy) * width + (x + sx)) * 4;
+                // 计算亮度
+                const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
 
-                        // 使用原始像素的颜色
-                        const pixelR = tempData[offset];
-                        const pixelG = tempData[offset + 1];
-                        const pixelB = tempData[offset + 2];
+                // 只处理非白色区域（针脚区域）
+                if (brightness < 240) {
+                    // 绘制多层堆叠效果
+                    for (let layer = 0; layer < stackLayers; layer++) {
+                        const layerOffset = layer * 0.5; // 每层的偏移量
 
-                        // 创建针脚纹理
-                        const distanceToCenter = Math.sqrt(
-                            Math.pow(sx - stitchSize/2, 2) +
-                            Math.pow(sy - stitchSize/2, 2)
-                        );
+                        // 绘制每层的针脚
+                        for (let sy = 0; sy < stitchSize && y + sy < height; sy++) {
+                            for (let sx = 0; sx < stitchSize && x + sx < width; sx++) {
+                                const idx = ((y + sy) * width + (x + sx)) * 4;
 
-                        // 模拟线条效果
-                        const threadEffect = Math.sin(distanceToCenter * Math.PI / 2) * 0.3;
+                                // 计算相对位置
+                                const relX = sx / stitchSize - 0.5;
+                                const relY = sy / stitchSize - 0.5;
 
-                        // 应用颜色和纹理，使用原始像素的颜色
-                        data[offset] = Math.min(255, pixelR * (1 + threadEffect));
-                        data[offset + 1] = Math.min(255, pixelG * (1 + threadEffect));
-                        data[offset + 2] = Math.min(255, pixelB * (1 + threadEffect));
+                                // 创建立体效果，考虑层级
+                                const baseHeight = Math.sin(relX * Math.PI) * Math.sin(relY * Math.PI);
+                                const height = (baseHeight + layerOffset) * heightFactor;
 
-                        // 在针脚边缘添加阴影效果
-                        if (distanceToCenter > stitchSize/2 - stitchGap) {
-                            data[offset] = Math.max(0, data[offset] - 30);
-                            data[offset + 1] = Math.max(0, data[offset + 1] - 30);
-                            data[offset + 2] = Math.max(0, data[offset + 2] - 30);
+                                // 光照计算
+                                const lightX = -0.7;
+                                const lightY = -0.7;
+                                const lightZ = 0.5;
+
+                                // 法线向量
+                                const normalX = -Math.cos(relX * Math.PI) * Math.sin(relY * Math.PI);
+                                const normalY = -Math.sin(relX * Math.PI) * Math.cos(relY * Math.PI);
+                                const normalZ = 1 + layerOffset; // 考虑层级的法线
+
+                                // 计算光照强度
+                                const lightIntensity = (normalX * lightX + normalY * lightY + normalZ * lightZ) /
+                                    Math.sqrt((normalX * normalX + normalY * normalY + normalZ * normalZ) *
+                                            (lightX * lightX + lightY * lightY + lightZ * lightZ));
+
+                                // 线条纹理
+                                const threadAngle = Math.atan2(relY, relX);
+                                const threadPattern = Math.sin(threadAngle * 8 + layer * Math.PI/4) * 0.15;
+
+                                // 计算颜色因子
+                                let factor = 1 + lightIntensity * (height > 0 ? highlightIntensity : shadowIntensity);
+                                factor += threadPattern;
+                                factor *= (1 - layer * 0.1); // 较深的层颜色略暗
+
+                                // 应用颜色
+                                if (Math.abs(baseHeight) > 0.2) { // 只在针脚主体部分应用效果
+                                    data[idx] = Math.max(0, Math.min(255, tempData[idx] * factor));
+                                    data[idx + 1] = Math.max(0, Math.min(255, tempData[idx + 1] * factor));
+                                    data[idx + 2] = Math.max(0, Math.min(255, tempData[idx + 2] * factor));
+
+                                    // 添加层次感的阴影
+                                    const shadowFactor = 0.85 + layer * 0.05;
+                                    data[idx] *= shadowFactor;
+                                    data[idx + 1] *= shadowFactor;
+                                    data[idx + 2] *= shadowFactor;
+                                }
+                            }
+                        }
+
+                        // 添加每层的边缘效果
+                        const edgeRadius = (stitchSize / 2) + layer * 0.5;
+                        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 12) {
+                            const edgeX = x + Math.cos(angle) * edgeRadius;
+                            const edgeY = y + Math.sin(angle) * edgeRadius;
+
+                            if (edgeX >= 0 && edgeX < width && edgeY >= 0 && edgeY < height) {
+                                const edgeIdx = (Math.floor(edgeY) * width + Math.floor(edgeX)) * 4;
+                                const shadowFactor = 0.7 - layer * 0.1;
+
+                                data[edgeIdx] = Math.floor(tempData[edgeIdx] * shadowFactor);
+                                data[edgeIdx + 1] = Math.floor(tempData[edgeIdx + 1] * shadowFactor);
+                                data[edgeIdx + 2] = Math.floor(tempData[edgeIdx + 2] * shadowFactor);
+                            }
                         }
                     }
                 }
             }
-        }
-
-        // 增强整体纹理
-        for (let i = 0; i < data.length; i += 4) {
-            // 添加细微的纹理变化
-            const noise = (Math.random() - 0.5) * 15;
-            data[i] = Math.max(0, Math.min(255, data[i] + noise));
-            data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + noise));
-            data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + noise));
         }
     }
 
@@ -465,7 +502,7 @@ class TextureProcessor {
         tempCanvas.height = height;
         const tempCtx = tempCanvas.getContext('2d');
 
-        // ���字绣参数
+        // 字绣参数
         const stitchSize = 8;  // 每个十字绣的大小
 
         // 遍历原图的每个网格
@@ -526,7 +563,7 @@ class TextureProcessor {
         // 对图案进行着色
         const patternData = patternImageData.data;
         for (let i = 0; i < patternData.length; i += 4) {
-            // 检查原始图案的透明度
+            // 检查原始图案透明度
             const alpha = patternData[i + 3];
 
             if (alpha > 0) {
